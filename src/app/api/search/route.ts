@@ -45,6 +45,21 @@ export async function GET(request: NextRequest) {
     searchParams.get('concurrency')
   );
 
+  // 每个源最多翻几页，由前端按需传入（默认走站点配置）。
+  // 源很多时把页数压到 1~2，可显著减少上游请求量，避免边缘函数被平台超时中断。
+  const maxPageParam = searchParams.get('maxpage');
+  const parsedMaxPage = maxPageParam ? parseInt(maxPageParam, 10) : Number.NaN;
+  const maxPages =
+    Number.isFinite(parsedMaxPage) && parsedMaxPage > 0
+      ? Math.min(5, parsedMaxPage)
+      : undefined;
+
+  // 时间预算：边缘运行时对单次执行有硬时长限制，超时会被平台直接断开，
+  // 前端表现为请求失败、所有源都搜不到。这里留出余量，主动在预算内收尾。
+  const startedAt = Date.now();
+  const TIME_BUDGET_MS = 17_000;
+  const outOfBudget = () => Date.now() - startedAt > TIME_BUDGET_MS;
+
   if (!query) {
     // 空查询无需读取配置，也无需创建流，明确不缓存
     return new Response(JSON.stringify({ results: [] }), {
@@ -76,13 +91,20 @@ export async function GET(request: NextRequest) {
     const searchSite = async (site: ApiSite) => {
       const siteResults: any[] = [];
       let hasResults = false;
+      if (outOfBudget()) {
+        return {
+          siteResults: [],
+          failed: { name: site.name, key: site.key, error: '超出时间预算' },
+        };
+      }
       try {
         const generator = searchFromApiStream(
           site,
           query,
           true,
           timeout,
-          request.signal
+          request.signal,
+          maxPages
         );
         for await (const pageResults of generator) {
           let filteredResults = pageResults;
@@ -184,13 +206,23 @@ export async function GET(request: NextRequest) {
     const failedSources: { name: string; key: string; error: string }[] = [];
 
     const searchSite = async (site: ApiSite) => {
+      if (outOfBudget()) {
+        failedSources.push({
+          name: site.name,
+          key: site.key,
+          error: '超出时间预算',
+        });
+        await safeWrite({ failedSources });
+        return;
+      }
       try {
         const generator = searchFromApiStream(
           site,
           query,
           true,
           timeout,
-          request.signal
+          request.signal,
+          maxPages
         );
         let hasResults = false;
 

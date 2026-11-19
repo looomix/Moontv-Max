@@ -180,7 +180,8 @@ export async function* searchFromApiStream(
   query: string,
   parallel = true,
   timeout?: number,
-  signal?: AbortSignal
+  signal?: AbortSignal,
+  maxPagesOverride?: number
 ): AsyncGenerator<SearchResult[], void, unknown> {
   if (signal?.aborted) return;
   // Normalize only the upstream keyword; callers retain the full query for matching.
@@ -192,7 +193,8 @@ export async function* searchFromApiStream(
     searchQuery,
     parallel,
     timeout,
-    signal
+    signal,
+    maxPagesOverride
   )) {
     if (signal?.aborted) return;
     const results = page.filter((result) => {
@@ -211,7 +213,8 @@ async function* searchApiQuery(
   query: string,
   parallel = true,
   timeout?: number,
-  signal?: AbortSignal
+  signal?: AbortSignal,
+  maxPagesOverride?: number
 ): AsyncGenerator<SearchResult[], void, unknown> {
   if (signal?.aborted) return;
   const apiUrl =
@@ -243,7 +246,10 @@ async function* searchApiQuery(
   // 分页
   if (signal?.aborted) return;
   const { SiteConfig } = await getConfig();
-  const maxPages = SiteConfig.SearchDownstreamMaxPage;
+  const maxPages =
+    maxPagesOverride && maxPagesOverride > 0
+      ? maxPagesOverride
+      : SiteConfig.SearchDownstreamMaxPage;
   const pageCount = data.pagecount || 1;
   const pagesToFetch = Math.min(pageCount, maxPages);
 

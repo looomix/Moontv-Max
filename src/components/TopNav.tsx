@@ -262,6 +262,24 @@ const TopNav = ({ activePath }: TopNavProps) => {
     document.addEventListener('mousedown', handler);
     return () => document.removeEventListener('mousedown', handler);
   }, [showHistory]);
+
+  // 按 “/” 快速唤起搜索（输入框内不触发）
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key !== '/' || e.metaKey || e.ctrlKey || e.altKey) return;
+      const target = e.target as HTMLElement | null;
+      const tag = target?.tagName;
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || target?.isContentEditable) {
+        return;
+      }
+      e.preventDefault();
+      setShowSearchBar(true);
+      setTimeout(() => searchInputRef.current?.focus(), 300);
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, []);
+
   /* ★ 搜索栏：items-stretch 让源选择器与输入框等高，不再各自决定高度 */
   const searchBarContent = (
     <div
@@ -361,18 +379,36 @@ const TopNav = ({ activePath }: TopNavProps) => {
       </div>
     </div>
   );
-  /* ★ 搜索触发按钮：使用刚性尺寸，展开/收起不影响布局 */
+  /* ★ 常驻搜索框（大屏）：一眼可见，点击展开完整搜索栏（含源选择与历史） */
   const searchButton = (
-    <button
-      onClick={() => {
-        setShowSearchBar(true);
-        setTimeout(() => searchInputRef.current?.focus(), 300);
-      }}
-      className='top-nav__search-trigger text-gray-700 hover:bg-gray-100/50 hover:text-green-600 rounded-lg transition-colors duration-200 dark:text-gray-300 dark:hover:text-green-400 dark:hover:bg-gray-700/50 flex-shrink-0'
-      title='搜索'
-    >
-      <Search className='top-nav__icon' />
-    </button>
+    <>
+      <button
+        onClick={() => {
+          setShowSearchBar(true);
+          setTimeout(() => searchInputRef.current?.focus(), 300);
+        }}
+        style={{ width: 'var(--nav-search-w)', height: 'var(--nav-search-h)' }}
+        className='hidden lg:flex items-center gap-2 px-3 rounded-lg border border-gray-300 bg-white text-gray-500 shadow-sm hover:border-green-500 hover:text-green-600 hover:bg-green-50/60 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-400 dark:hover:border-green-500 dark:hover:text-green-400 dark:hover:bg-gray-700/60 transition-colors flex-shrink-0'
+        title='搜索影视（快捷键 /）'
+      >
+        <Search className='top-nav__icon flex-shrink-0' />
+        <span className='text-sm truncate'>搜索影视</span>
+        <kbd className='ml-auto hidden xl:inline-flex items-center justify-center px-1.5 py-0.5 text-[10px] font-medium leading-none text-gray-400 bg-gray-100 border border-gray-200 rounded dark:bg-gray-700 dark:border-gray-600 dark:text-gray-400'>
+          /
+        </kbd>
+      </button>
+      {/* 中小屏：保留图标按钮，避免挤压导航 */}
+      <button
+        onClick={() => {
+          setShowSearchBar(true);
+          setTimeout(() => searchInputRef.current?.focus(), 300);
+        }}
+        className='lg:hidden text-gray-700 hover:bg-gray-100/50 hover:text-green-600 rounded-lg transition-colors duration-200 dark:text-gray-300 dark:hover:text-green-400 dark:hover:bg-gray-700/50 flex-shrink-0 p-2'
+        title='搜索（快捷键 /）'
+      >
+        <Search className='top-nav__icon' />
+      </button>
+    </>
   );
   return (
     <>

@@ -31,6 +31,14 @@ import SearchSuggestions from '@/components/SearchSuggestions';
 import SourceSelector from '@/components/SourceSelector';
 import VideoCard from '@/components/VideoCard';
 
+// 搜索分批参数：边缘部署下单次请求能承受的上游源数量与时长都有限，
+// 一次性查几十个源会被平台中断，表现为「所有源都搜不到」。
+// 这里把源切成小批并行请求，单批失败不影响其他批次。
+const SEARCH_BATCH_SIZE = 10; // 每批请求的源数量
+const SEARCH_BATCH_CONCURRENCY = 4; // 同时进行的批次数
+const SEARCH_TIMEOUT_CAP = 10; // 单批请求超时上限（秒）
+const SEARCH_MAX_PAGE = 2; // 每个源最多翻页数
+
 function SearchPageClient() {
   const [searchHistory, setSearchHistory] = useState<string[]>([]);
   const [showBackToTop, setShowBackToTop] = useState(false);
@@ -303,71 +311,91 @@ function SearchPageClient() {
     const controller = new AbortController();
     abortControllerRef.current = controller;
 
-    try {
-      setIsLoading(true);
-      setSearchResults([]);
-      setFailedSources([]);
-      setShowResults(true);
+    const targetQuery = query.trim();
+    // 单批请求的超时上限：边缘部署下大超时会让函数被平台掐断，结果就是整轮空白
+    const rawTimeout = getRequestTimeout();
+    const timeoutSeconds = Math.min(
+      Number.isFinite(rawTimeout) && rawTimeout > 0 ? rawTimeout : 10,
+      SEARCH_TIMEOUT_CAP
+    );
+    const concurrency = getSearchConcurrency();
 
-      const params = new URLSearchParams({ q: query.trim() });
+    let firstResultShown = false;
+
+    const runBatch = async (batchKeys: string[]) => {
+      const params = new URLSearchParams({ q: targetQuery });
       params.set('stream', streamEnabled ? '1' : '0');
-
-      // 添加选中的搜索源到请求参数
-      if (searchSources.length > 0) {
-        params.set('sources', searchSources.join(','));
+      if (batchKeys.length > 0) {
+        params.set('sources', batchKeys.join(','));
       }
-
-      // 添加超时时间与并发数参数
-      const timeoutSeconds = getRequestTimeout();
       params.set('timeout', timeoutSeconds.toString());
-      params.set('concurrency', getSearchConcurrency().toString());
+      params.set(
+        'concurrency',
+        Math.max(concurrency, batchKeys.length || concurrency).toString()
+      );
+      params.set('maxpage', SEARCH_MAX_PAGE.toString());
 
-      const response = await fetch(`/api/search?${params.toString()}`, {
-        signal: controller.signal,
-      });
-      if (!response.ok)
-        throw new Error(`Search request failed: ${response.status}`);
-      if (controller.signal.aborted) return;
+      try {
+        const response = await fetch(`/api/search?${params.toString()}`, {
+          signal: controller.signal,
+        });
+        if (controller.signal.aborted || !response.ok) return;
 
-      if (!streamEnabled) {
-        const json = await response.json();
-        if (controller.signal.aborted) return;
-        setSearchResults(json.results || []);
-        setFailedSources(json.failedSources || []);
-        setIsLoading(false);
-      } else {
+        const mergeFailed = (incoming: any) => {
+          if (!Array.isArray(incoming) || incoming.length === 0) return;
+          setFailedSources((prev) => {
+            const map = new Map(prev.map((item) => [item.key, item]));
+            incoming.forEach((item: any) => {
+              if (item?.key) map.set(item.key, item);
+            });
+            return Array.from(map.values());
+          });
+        };
+
+        if (!streamEnabled) {
+          const json = await response.json().catch(() => null);
+          if (!json) return;
+          if (Array.isArray(json.results) && json.results.length > 0) {
+            setSearchResults((prev) => [...prev, ...json.results]);
+            if (!firstResultShown) {
+              firstResultShown = true;
+              setIsLoading(false);
+            }
+          }
+          mergeFailed(json.failedSources);
+          return;
+        }
+
         if (!response.body) return;
         const reader = response.body.getReader();
         const decoder = new TextDecoder();
-        let done = false;
         let buffer = '';
-        let firstResult = true;
+        let done = false;
 
         while (!done) {
           const { value, done: readerDone } = await reader.read();
           if (controller.signal.aborted) return;
           done = readerDone;
+          if (!value) continue;
 
-          if (value) {
-            buffer += decoder.decode(value, { stream: true });
-            const lines = buffer.split('\n');
-            buffer = lines.pop() || '';
+          buffer += decoder.decode(value, { stream: true });
+          const chunks = buffer.split('\n');
+          buffer = chunks.pop() || '';
 
-            for (const line of lines) {
-              if (!line.trim()) continue;
-              try {
-                const json = JSON.parse(line);
-                if (json.pageResults?.length) {
-                  setSearchResults((prev) => [...prev, ...json.pageResults]);
-                  if (firstResult) {
-                    setIsLoading(false);
-                    firstResult = false;
-                  }
+          for (const line of chunks) {
+            if (!line.trim()) continue;
+            try {
+              const json = JSON.parse(line);
+              if (json.pageResults?.length) {
+                setSearchResults((prev) => [...prev, ...json.pageResults]);
+                if (!firstResultShown) {
+                  firstResultShown = true;
+                  setIsLoading(false);
                 }
-                if (json.failedSources) setFailedSources(json.failedSources);
-              } catch {
-                //
               }
+              mergeFailed(json.failedSources);
+            } catch {
+              // 忽略不完整的一行
             }
           }
         }
@@ -375,21 +403,82 @@ function SearchPageClient() {
         if (buffer.trim()) {
           try {
             const json = JSON.parse(buffer);
-            if (json.pageResults)
+            if (json.pageResults?.length) {
               setSearchResults((prev) => [...prev, ...json.pageResults]);
-            if (json.failedSources) setFailedSources(json.failedSources);
+            }
+            mergeFailed(json.failedSources);
           } catch {
-            //
+            // ignore
           }
         }
-
-        setIsLoading(false);
+      } catch {
+        // 单批失败（包含被平台中断）不影响其他批次
       }
+    };
+
+    try {
+      setIsLoading(true);
+      setSearchResults([]);
+      setFailedSources([]);
+      setShowResults(true);
+
+      // 需要搜索的源：用户选了源就用选中的，否则取全部可用源用于分批
+      let targetKeys = searchSources.filter(Boolean);
+      if (targetKeys.length === 0) {
+        try {
+          const res = await fetch(
+            `/api/search/resources?_t=${Date.now()}`,
+            {
+              signal: controller.signal,
+              cache: 'no-store',
+            }
+          );
+          if (res.ok) {
+            const sites = await res.json();
+            if (Array.isArray(sites)) {
+              targetKeys = sites
+                .map((site: any) => site?.key)
+                .filter((key: any) => typeof key === 'string' && key.length > 0);
+            }
+          }
+        } catch {
+          // 取不到源列表时退化为单次请求（服务端自行查全部源）
+        }
+      }
+
+      // 按批切分：单次请求最多查 SEARCH_BATCH_SIZE 个源
+      const batches: string[][] = [];
+      if (targetKeys.length === 0) {
+        batches.push([]);
+      } else {
+        for (let i = 0; i < targetKeys.length; i += SEARCH_BATCH_SIZE) {
+          batches.push(targetKeys.slice(i, i + SEARCH_BATCH_SIZE));
+        }
+      }
+
+      let cursor = 0;
+      const runner = async () => {
+        while (cursor < batches.length) {
+          const index = cursor;
+          cursor += 1;
+          await runBatch(batches[index]);
+          if (controller.signal.aborted) return;
+        }
+      };
+
+      await Promise.all(
+        Array.from(
+          { length: Math.min(SEARCH_BATCH_CONCURRENCY, batches.length) },
+          () => runner()
+        )
+      );
+
+      if (controller.signal.aborted) return;
+      setIsLoading(false);
     } catch (err: any) {
-      if (controller.signal.aborted || err.name === 'AbortError') return;
+      if (controller.signal.aborted || err?.name === 'AbortError') return;
       // eslint-disable-next-line no-console
       console.error('搜索失败', err);
-      setSearchResults([]);
     } finally {
       if (
         abortControllerRef.current === controller &&
@@ -861,7 +950,12 @@ function SearchPageClient() {
                 {sortedAggregatedResults.exact.length === 0 &&
                   sortedAggregatedResults.others.length === 0 && (
                     <div className='col-span-full text-center text-gray-500 py-8 dark:text-gray-400'>
-                      未找到相关结果
+                      <div>未找到相关结果</div>
+                      {failedSources.length > 0 && (
+                        <div className='mt-2 text-xs text-gray-400 dark:text-gray-500'>
+                          其中 {failedSources.length} 个源请求失败或超时，可展开上方「失败源」查看原因
+                        </div>
+                      )}
                     </div>
                   )}
 
