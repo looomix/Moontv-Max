@@ -1057,26 +1057,7 @@ const UserConfig = ({ config, role, refreshConfig }: UserConfigProps) => {
 };
 
 // 视频源配置组件
-// 内置一键导入源（常见第三方订阅配置）
-const PRESET_IMPORT_SOURCES = [
-  {
-    label: 'KVideo 聚合源',
-    url: 'https://raw.githubusercontent.com/puppet680/KVideo-config/refs/heads/main/adult.json',
-  },
-  {
-    label: 'CMS 全量状态源',
-    url: 'https://raw.githubusercontent.com/puppet680/cms-config/refs/heads/main/full_status.json',
-  },
-  {
-    label: 'LunaTV 配置源',
-    url: 'https://raw.githubusercontent.com/hafrey1/LunaTV-config/refs/heads/main/LunaTV-config.json',
-  },
-  {
-    label: '资源组 CMS 接口',
-    url: 'https://www.ziyuanzu.com/download/ziyuanzu-cms-interfaces.txt',
-  },
-];
-
+// 说明：本程序不内置任何视频源，所有源均由管理员通过接口地址手动添加或从自备订阅链接导入
 const VideoSourceConfig = ({
   config,
   refreshConfig,
@@ -1085,7 +1066,6 @@ const VideoSourceConfig = ({
   refreshConfig: () => Promise<void>;
 }) => {
   const [sources, setSources] = useState<DataSource[]>([]);
-  const [showAddForm, setShowAddForm] = useState(false);
   const [orderChanged, setOrderChanged] = useState(false);
   const [newSource, setNewSource] = useState<DataSource>({
     name: '',
@@ -1093,7 +1073,7 @@ const VideoSourceConfig = ({
     api: '',
     detail: '',
     disabled: false,
-    from: 'config',
+    from: 'custom',
   });
   
   // 批量操作相关状态
@@ -1186,7 +1166,6 @@ const VideoSourceConfig = ({
           disabled: false,
           from: 'custom',
         });
-        setShowAddForm(false);
       })
       .catch(() => {
         console.error('操作失败', 'add', newSource);
@@ -1313,7 +1292,7 @@ const VideoSourceConfig = ({
     }
   };
 
-  // 一键导入视频源（支持内置预设与自定义地址）
+  // 从链接导入视频源（仅支持粘贴自备订阅地址，不内置任何预设源）
   const handleImport = async (rawUrl: string) => {
     const url = (rawUrl || '').trim();
     if (!url) {
@@ -1506,48 +1485,114 @@ const VideoSourceConfig = ({
 
   return (
     <div className='space-y-6'>
-      {/* 分组管理功能移除：请在“用户配置”中进行分组与分配 */}
-      {/* 添加视频源表单 */}
-      <div className='flex items-center justify-between'>
-        <h4 className='text-sm font-medium text-gray-700 dark:text-gray-300'>
-          视频源列表
-        </h4>
-        <button
-          onClick={() => setShowAddForm(!showAddForm)}
-          className='px-3 py-1 bg-green-600 hover:bg-green-700 text-white text-sm rounded-lg transition-colors'
-        >
-          {showAddForm ? '取消' : '添加视频源'}
-        </button>
+      {/* 操作栏：添加视频源 + 视频源检测 同栏并列 */}
+      <div className='grid gap-4 lg:grid-cols-2'>
+        {/* 添加视频源 */}
+        <div className='flex flex-col p-4 bg-gray-50 dark:bg-gray-900 rounded-lg border border-gray-200 dark:border-gray-700'>
+          <div className='flex items-start justify-between gap-3'>
+            <div>
+              <h4 className='text-sm font-medium text-gray-700 dark:text-gray-300'>
+                添加视频源
+              </h4>
+              <p className='text-xs text-gray-500 dark:text-gray-400 mt-1'>
+                填写接口地址即可新增，本程序不内置任何视频源。
+              </p>
+            </div>
+            <span className='shrink-0 px-2 py-0.5 text-xs rounded-full bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-300'>
+              {sources.length} 个
+            </span>
+          </div>
+          <div className='mt-3 grid grid-cols-1 gap-3'>
+            <input
+              type='text'
+              placeholder='名称'
+              value={newSource.name}
+              onChange={(e) =>
+                setNewSource((prev) => ({ ...prev, name: e.target.value }))
+              }
+              className='px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100'
+            />
+            <input
+              type='text'
+              placeholder='Key'
+              value={newSource.key}
+              onChange={(e) =>
+                setNewSource((prev) => ({ ...prev, key: e.target.value }))
+              }
+              className='px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100'
+            />
+            <input
+              type='text'
+              placeholder='API 地址'
+              value={newSource.api}
+              onChange={(e) =>
+                setNewSource((prev) => ({ ...prev, api: e.target.value }))
+              }
+              className='px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100'
+            />
+            <input
+              type='text'
+              placeholder='Detail 地址（选填）'
+              value={newSource.detail}
+              onChange={(e) =>
+                setNewSource((prev) => ({ ...prev, detail: e.target.value }))
+              }
+              className='px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100'
+            />
+          </div>
+          <div className='mt-auto pt-3 flex justify-end'>
+            <button
+              onClick={handleAddSource}
+              disabled={!newSource.name || !newSource.key || !newSource.api}
+              className='w-full sm:w-auto px-4 py-2 bg-green-600 hover:bg-green-700 disabled:bg-gray-400 text-white text-sm rounded-lg transition-colors'
+            >
+              添加
+            </button>
+          </div>
+        </div>
+
+        {/* 视频源检测 */}
+        <div className='flex flex-col p-4 bg-amber-50 dark:bg-amber-900/20 rounded-lg border border-amber-200 dark:border-amber-700'>
+          <h4 className='text-sm font-medium text-gray-700 dark:text-gray-300'>
+            视频源检测
+          </h4>
+          <p className='text-xs text-gray-500 dark:text-gray-400 mt-1'>
+            批量检测已启用源的可用性，检测完成后可一键清理无用源。
+          </p>
+          <div className='mt-auto pt-3 flex items-center justify-end gap-2'>
+            {checking && (
+              <span className='text-xs text-gray-500 dark:text-gray-400'>
+                {checkProgress.done}/{checkProgress.total}
+              </span>
+            )}
+            <button
+              onClick={handleCheckSources}
+              disabled={checking || sources.length === 0}
+              className='px-3 py-2 bg-amber-600 hover:bg-amber-700 disabled:bg-gray-400 text-white text-sm rounded-lg transition-colors flex items-center justify-center gap-1'
+            >
+              <Check size={14} />
+              {checking ? '检测中…' : '开始检测'}
+            </button>
+          </div>
+        </div>
       </div>
 
-      {/* 一键导入视频源 */}
+      {/* 从链接导入视频源 */}
       <div className='p-4 bg-green-50 dark:bg-green-900/20 rounded-lg border border-green-200 dark:border-green-700 space-y-3'>
         <div>
           <h4 className='text-sm font-medium text-gray-700 dark:text-gray-300'>
-            一键导入视频源
+            从链接导入
           </h4>
           <p className='text-xs text-gray-500 dark:text-gray-400 mt-1'>
-            支持 LunaTV / KVideo / 苹果CMS 等订阅格式，自动去重合并。
+            粘贴自备的订阅链接（.json / .txt），自动识别 LunaTV / KVideo / 苹果CMS 格式并去重合并。
           </p>
-        </div>
-        <div className='grid gap-2 sm:grid-cols-2'>
-          {PRESET_IMPORT_SOURCES.map((preset) => (
-            <button
-              key={preset.url}
-              onClick={() => handleImport(preset.url)}
-              disabled={importing !== null}
-              className='px-3 py-2 text-sm rounded-lg border border-green-300 dark:border-green-700 bg-white dark:bg-gray-800 text-green-700 dark:text-green-300 hover:bg-green-100 dark:hover:bg-green-900/40 disabled:opacity-50 disabled:cursor-not-allowed transition-colors'
-            >
-              {importing === preset.url ? '导入中…' : preset.label}
-            </button>
-          ))}
         </div>
         <div className='flex flex-col sm:flex-row gap-2'>
           <input
             type='text'
             value={importUrl}
             onChange={(e) => setImportUrl(e.target.value)}
-            placeholder='自定义订阅地址（.json / .txt）'
+            placeholder='https://example.com/subscription.json'
             className='flex-1 px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100'
           />
           <button
@@ -1558,26 +1603,6 @@ const VideoSourceConfig = ({
             {importUrl.trim() && importing === importUrl.trim() ? '导入中…' : '导入'}
           </button>
         </div>
-      </div>
-
-      {/* 视频源检测 */}
-      <div className='p-4 bg-amber-50 dark:bg-amber-900/20 rounded-lg border border-amber-200 dark:border-amber-700 flex flex-col sm:flex-row sm:items-center gap-3 justify-between'>
-        <div>
-          <h4 className='text-sm font-medium text-gray-700 dark:text-gray-300'>
-            视频源检测
-          </h4>
-          <p className='text-xs text-gray-500 dark:text-gray-400 mt-1'>
-            检测已启用源的可用性，完成后可一键清理无用源。
-          </p>
-        </div>
-        <button
-          onClick={handleCheckSources}
-          disabled={checking || sources.length === 0}
-          className='px-3 py-2 bg-amber-600 hover:bg-amber-700 disabled:bg-gray-400 text-white text-sm rounded-lg transition-colors flex items-center justify-center gap-1'
-        >
-          <Check size={14} />
-          {checking ? `检测中 ${checkProgress.done}/${checkProgress.total}` : '开始检测'}
-        </button>
       </div>
 
       {/* 批量操作工具栏 */}
@@ -1625,59 +1650,21 @@ const VideoSourceConfig = ({
         </div>
       )}
 
-      {showAddForm && (
-        <div className='p-4 bg-gray-50 dark:bg-gray-900 rounded-lg border border-gray-200 dark:border-gray-700 space-y-4'>
-          <div className='grid grid-cols-1 sm:grid-cols-2 gap-4'>
-            <input
-              type='text'
-              placeholder='名称'
-              value={newSource.name}
-              onChange={(e) =>
-                setNewSource((prev) => ({ ...prev, name: e.target.value }))
-              }
-              className='px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100'
-            />
-            <input
-              type='text'
-              placeholder='Key'
-              value={newSource.key}
-              onChange={(e) =>
-                setNewSource((prev) => ({ ...prev, key: e.target.value }))
-              }
-              className='px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100'
-            />
-            <input
-              type='text'
-              placeholder='API 地址'
-              value={newSource.api}
-              onChange={(e) =>
-                setNewSource((prev) => ({ ...prev, api: e.target.value }))
-              }
-              className='px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100'
-            />
-            <input
-              type='text'
-              placeholder='Detail 地址（选填）'
-              value={newSource.detail}
-              onChange={(e) =>
-                setNewSource((prev) => ({ ...prev, detail: e.target.value }))
-              }
-              className='px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100'
-            />
-          </div>
-          <div className='flex justify-end'>
-            <button
-              onClick={handleAddSource}
-              disabled={!newSource.name || !newSource.key || !newSource.api}
-              className='w-full sm:w-auto px-4 py-2 bg-green-600 hover:bg-green-700 disabled:bg-gray-400 text-white rounded-lg transition-colors'
-            >
-              添加
-            </button>
-          </div>
-        </div>
-      )}
+      {/* 视频源列表 */}
+      <div className='flex items-center justify-between gap-3'>
+        <h4 className='text-sm font-medium text-gray-700 dark:text-gray-300'>
+          视频源列表
+        </h4>
+        <span className='text-xs text-gray-500 dark:text-gray-400'>
+          拖拽可调整顺序
+        </span>
+      </div>
 
-      {/* 视频源表格 */}
+      {sources.length === 0 ? (
+        <div className='p-6 text-center text-sm text-gray-500 dark:text-gray-400 border border-dashed border-gray-300 dark:border-gray-700 rounded-lg'>
+          暂无视频源。请在上方「添加视频源」填写接口地址，或粘贴订阅链接导入。
+        </div>
+      ) : (
       <div className='border border-gray-200 dark:border-gray-700 rounded-lg max-h-[28rem] overflow-y-auto overflow-x-auto'>
         <DndContext
           sensors={sensors}
@@ -1724,6 +1711,7 @@ const VideoSourceConfig = ({
           </table>
         </DndContext>
       </div>
+      )}
 
       {/* 保存排序按钮 */}
       {orderChanged && (

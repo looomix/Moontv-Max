@@ -413,12 +413,13 @@ async function initConfig() {
         Users: [],
         Groups: [],
       },
-      SourceConfig: Object.entries(fileConfig.api_site).map(([key, site]) => ({
+      // 不内置任何视频源：默认空列表，由管理员在后台自行添加或导入
+      SourceConfig: Object.entries(fileConfig.api_site || {}).map(([key, site]) => ({
         key,
         name: site.name,
         api: site.api,
         detail: site.detail,
-        from: 'config',
+        from: 'custom',
         disabled: false,
       })),
       CustomCategories:
@@ -718,7 +719,7 @@ export async function resetConfig() {
     fileConfig = runtimeConfig as unknown as ConfigFileStruct;
   }
 
-  const apiSiteEntries = Object.entries(fileConfig.api_site);
+  const apiSiteEntries = Object.entries(fileConfig.api_site || {});
   const customCategories = fileConfig.custom_category || [];
   let allUsers = userNames.map((uname) => ({
     username: uname,
