@@ -177,14 +177,9 @@ export async function fetchDoubanCategories(
       list: list,
     };
   } catch (error) {
-    // 触发全局错误提示
-    if (typeof window !== 'undefined') {
-      window.dispatchEvent(
-        new CustomEvent('globalError', {
-          detail: { message: '获取豆瓣分类数据失败' },
-        })
-      );
-    }
+    // 豆瓣接口失败属非致命错误（只影响推荐/榜单数据），静默降级：
+    // 仅在控制台留日志，不再弹全局红色提示，避免影响正常观影
+    console.warn('获取豆瓣分类数据失败:', (error as Error).message);
     throw new Error(`获取豆瓣分类数据失败: ${(error as Error).message}`);
   }
 }
@@ -307,14 +302,8 @@ export async function fetchDoubanList(
       list: list,
     };
   } catch (error) {
-    // 触发全局错误提示
-    if (typeof window !== 'undefined') {
-      window.dispatchEvent(
-        new CustomEvent('globalError', {
-          detail: { message: '获取豆瓣列表数据失败' },
-        })
-      );
-    }
+    // 同上：静默降级，不弹全局红色提示
+    console.warn('获取豆瓣列表数据失败:', (error as Error).message);
     throw new Error(`获取豆瓣分类数据失败: ${(error as Error).message}`);
   }
 }
