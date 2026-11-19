@@ -142,14 +142,89 @@ function parseSourcePayload(text: string): ParsedSource[] {
   return result;
 }
 
+/**
+ * 只读取响应体前若干字节。
+ *
+ * 边缘运行时（Cloudflare Pages / Vercel Edge）对单次执行的 CPU 时间与内存都有
+ * 硬限制，部分资源站会返回几 MB 的 JSON，完整 `text()` + `JSON.parse` 很容易
+ * 让函数被平台直接终止——前端表现为 `Failed to fetch`（连接中断，而非 HTTP 错误）。
+ * 这里只读前 96KB 足够判断接口是否存活。
+ */
+async function readBodyHead(
+  resp: Response,
+  maxBytes = 96 * 1024
+): Promise<string> {
+  const body = resp.body;
+  if (!body) return '';
+  const reader = body.getReader();
+  const chunks: Uint8Array[] = [];
+  let size = 0;
+  try {
+    while (size < maxBytes) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      if (!value) continue;
+      chunks.push(value);
+      size += value.byteLength;
+    }
+  } catch {
+    // 读取中断时保留已读到的内容
+  } finally {
+    try {
+      await reader.cancel();
+    } catch {
+      /* ignore */
+    }
+  }
+  if (chunks.length === 0) return '';
+  const merged = new Uint8Array(Math.min(size, maxBytes));
+  let offset = 0;
+  for (const chunk of chunks) {
+    if (offset >= merged.length) break;
+    const slice =
+      chunk.byteLength > merged.length - offset
+        ? chunk.subarray(0, merged.length - offset)
+        : chunk;
+    merged.set(slice, offset);
+    offset += slice.byteLength;
+  }
+  return new TextDecoder('utf-8', { fatal: false }).decode(merged);
+}
+
+/** 判断响应内容是否像一个可用的苹果 CMS / JSON 接口 */
+function looksLikeSourceApi(text: string): boolean {
+  const head = text.trimStart();
+  if (!head) return false;
+  // HTML 落地页、404 页、跳转页都不算可用
+  if (head.startsWith('<')) return false;
+  if (!head.startsWith('{') && !head.startsWith('[')) return false;
+
+  const probe = text.slice(0, 8192);
+  // 苹果 CMS 常见字段：list / total / code / data / class
+  if (/"(list|total|code|data|class)"\s*:/.test(probe)) return true;
+
+  // 结构不认识但确实是可解析 JSON，说明接口是活的
+  try {
+    JSON.parse(text);
+    return true;
+  } catch {
+    // JSON 被截断（响应体过大），只要开头是 JSON 就认为源可用
+    return /^[[{]/.test(head);
+  }
+}
+
 /** 以带超时的方式探测单个源是否可用 */
-async function probeSource(api: string, timeoutMs = 5000): Promise<boolean> {
+async function probeSource(api: string, timeoutMs = 6000): Promise<boolean> {
+  const base = normalizeApi(api);
+  if (!base) return false;
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
-    const u = new URL(api);
+    const u = new URL(base);
     u.searchParams.set('ac', 'videolist');
     u.searchParams.set('wd', '测试');
+    // 只要 1 条结果，尽量减少响应体
+    u.searchParams.set('pagesize', '1');
     const resp = await fetch(u.toString(), {
       signal: controller.signal,
       headers: {
@@ -159,21 +234,8 @@ async function probeSource(api: string, timeoutMs = 5000): Promise<boolean> {
       },
     });
     if (!resp.ok) return false;
-    const body = await resp.text();
-    const trimmed = body.trim();
-    if (!trimmed.startsWith('{') && !trimmed.startsWith('[')) return false;
-    try {
-      const json = JSON.parse(trimmed);
-      // 苹果 CMS 正常响应通常包含 list/total/code 字段
-      return (
-        Array.isArray(json.list) ||
-        json.total !== undefined ||
-        json.code === 1 ||
-        json.code === '1'
-      );
-    } catch {
-      return false;
-    }
+    const text = await readBodyHead(resp);
+    return looksLikeSourceApi(text);
   } catch {
     return false;
   } finally {
@@ -467,22 +529,17 @@ export async function POST(request: NextRequest) {
         if (!Array.isArray(keys) || keys.length === 0) {
           return NextResponse.json({ ok: true, results: [] });
         }
+        // 边缘函数单次执行时长/CPU 受限，一次只探测少量源。
+        // 前端按小并发逐条调用，避免一次请求跑太久被平台中断（Failed to fetch）。
         const targets = adminConfig.SourceConfig.filter((s) =>
           keys.includes(s.key)
+        ).slice(0, 3);
+        const results = await Promise.all(
+          targets.map(async (s) => ({
+            key: s.key,
+            ok: await probeSource(s.api),
+          }))
         );
-        // 并发探测，最多 8 个同时进行
-        const results: { key: string; ok: boolean }[] = [];
-        const concurrency = 8;
-        for (let i = 0; i < targets.length; i += concurrency) {
-          const batch = targets.slice(i, i + concurrency);
-          const settled = await Promise.all(
-            batch.map(async (s) => ({
-              key: s.key,
-              ok: await probeSource(s.api),
-            }))
-          );
-          results.push(...settled);
-        }
         return NextResponse.json(
           { ok: true, results },
           { headers: { 'Cache-Control': 'no-store' } }

@@ -1324,7 +1324,7 @@ const VideoSourceConfig = ({
     }
   };
 
-  // 源检测：分批探测已启用的源，完成后弹窗询问是否清理无用源
+  // 源检测：逐条探测已启用的源（小并发），完成后弹窗询问是否清理无用源
   const handleCheckSources = async () => {
     const enabled = sources.filter((s) => !s.disabled);
     if (enabled.length === 0) {
@@ -1334,40 +1334,85 @@ const VideoSourceConfig = ({
     const keys = enabled.map((s) => s.key);
     setChecking(true);
     setCheckProgress({ done: 0, total: keys.length });
-    const dead: string[] = [];
-    const chunkSize = 10;
+
+    const dead: string[] = []; // 明确不可用
+    const unknown: string[] = []; // 请求失败，状态未知（不参与删除）
+    let cursor = 0;
+    let done = 0;
+    let aborted = false;
+
+    // 边缘环境下单个探测请求成本较高：每条源单独请求、最多 6 个并发，
+    // 避免一次请求探测太多源导致函数被平台中断（前端表现为 Failed to fetch）
+    const worker = async () => {
+      while (!aborted) {
+        const index = cursor++;
+        if (index >= keys.length) return;
+        const key = keys[index];
+        try {
+          const resp = await fetch('/api/admin/source', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ action: 'check', keys: [key] }),
+          });
+          const data = await resp.json().catch(() => ({}));
+          if (!resp.ok) {
+            unknown.push(key);
+          } else {
+            const hit = (data.results || []).find(
+              (r: { key: string; ok: boolean }) => r.key === key
+            );
+            if (hit && hit.ok === false) dead.push(key);
+            else if (!hit) unknown.push(key);
+          }
+        } catch {
+          // 网络层失败：该源状态未知，不删除；连续大量失败说明接口本身不可用
+          unknown.push(key);
+          if (unknown.length >= 4 && dead.length === 0) {
+            aborted = true;
+          }
+        }
+        done += 1;
+        setCheckProgress({ done, total: keys.length });
+      }
+    };
+
     try {
-      for (let i = 0; i < keys.length; i += chunkSize) {
-        const part = keys.slice(i, i + chunkSize);
-        const resp = await fetch('/api/admin/source', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ action: 'check', keys: part }),
-        });
-        const data = await resp.json().catch(() => ({}));
-        if (!resp.ok) throw new Error(data.error || '检测失败');
-        (data.results || []).forEach((r: { key: string; ok: boolean }) => {
-          if (!r.ok) dead.push(r.key);
-        });
-        setCheckProgress({
-          done: Math.min(i + chunkSize, keys.length),
-          total: keys.length,
-        });
+      await Promise.all([
+        worker(),
+        worker(),
+        worker(),
+        worker(),
+        worker(),
+        worker(),
+      ]);
+
+      if (aborted) {
+        showError(
+          '检测请求被服务器中断，未能完成检测。请确认部署环境允许服务端访问外部站点，或稍后重试。'
+        );
+        return;
       }
 
       if (dead.length === 0) {
         Swal.fire({
-          icon: 'success',
+          icon: unknown.length > 0 ? 'info' : 'success',
           title: '检测完成',
-          text: '所有已启用的视频源均可用',
+          text:
+            unknown.length > 0
+              ? `可用源检测通过，但有 ${unknown.length} 个源探测超时，无法判断状态（已保留）。`
+              : '所有已启用的视频源均可用',
         });
         return;
       }
 
+      const unknownTip =
+        unknown.length > 0
+          ? `<br/><span style="font-size:12px;color:#6b7280">另有 ${unknown.length} 个源探测失败，状态未知，将保留。</span>`
+          : '';
       const { isConfirmed } = await Swal.fire({
         icon: 'warning',
         title: '发现无用源',
-        html: `共检测到 <b>${dead.length}</b> 个无用源。<br/><br/>是否立即删除这些无用源？`,
+        html: `共检测到 <b>${dead.length}</b> 个无用源。${unknownTip}<br/><br/>是否立即删除这些无用源？`,
         showCancelButton: true,
         confirmButtonText: '删除无用源',
         cancelButtonText: '保留',
@@ -1557,7 +1602,7 @@ const VideoSourceConfig = ({
             视频源检测
           </h4>
           <p className='text-xs text-gray-500 dark:text-gray-400 mt-1'>
-            批量检测已启用源的可用性，检测完成后可一键清理无用源。
+            逐条检测已启用源的可用性，完成后可一键清理无用源。源较多时需要一些时间，请勿关闭页面。
           </p>
           <div className='mt-auto pt-3 flex items-center justify-end gap-2'>
             {checking && (
