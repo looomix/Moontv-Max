@@ -12,8 +12,6 @@ import { getDefaultPlaybackSaveInterval } from '@/lib/playback-settings';
 import ConditionalNav from '../components/ConditionalNav';
 import GlobalDownloadManager from '../components/GlobalDownloadManager';
 import { GlobalErrorIndicator } from '../components/GlobalErrorIndicator';
-import { NavigationLoadingIndicator } from '../components/NavigationLoadingIndicator';
-import { NavigationLoadingProvider } from '../components/NavigationLoadingProvider';
 import ServiceWorkerRegistration from '../components/ServiceWorkerRegistration';
 import { SiteProvider } from '../components/SiteProvider';
 import { ThemeProvider } from '../components/ThemeProvider';
@@ -134,10 +132,8 @@ export default async function RootLayout({
           disableTransitionOnChange
         >
           <ServiceWorkerRegistration />
-          <NavigationLoadingProvider>
-            <SiteProvider siteName={siteName} announcement={announcement}>
-              <NavigationLoadingIndicator />
-              <UserOnlineUpdate />
+          <SiteProvider siteName={siteName} announcement={announcement}>
+            <UserOnlineUpdate />
               
               {/* 条件导航栏 - 根据路径自动判断是否显示 */}
               <ConditionalNav />
@@ -159,7 +155,6 @@ export default async function RootLayout({
               
               <GlobalErrorIndicator />
             </SiteProvider>
-          </NavigationLoadingProvider>
         </ThemeProvider>
       </body>
     </html>

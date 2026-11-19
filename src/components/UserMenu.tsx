@@ -21,7 +21,6 @@ import { getAuthInfoFromBrowserCookie } from '@/lib/auth';
 import { saveNavSettings } from '@/lib/nav-settings';
 import { checkForUpdates, CURRENT_VERSION, UpdateStatus } from '@/lib/version';
 
-import { useNavigationLoading } from './NavigationLoadingProvider';
 import { VersionPanel } from './VersionPanel';
 
 interface AuthInfo {
@@ -46,7 +45,6 @@ const normalizeDoubanProxyType = (value?: string | null) =>
 export const UserMenu: React.FC = () => {
   const router = useRouter();
   const pathname = usePathname();
-  const { startLoading } = useNavigationLoading();
   const [isOpen, setIsOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isChangePasswordOpen, setIsChangePasswordOpen] = useState(false);
@@ -310,12 +308,10 @@ export const UserMenu: React.FC = () => {
   };
 
   const handleAdminPanel = () => {
-    // 如果已经在管理页面，直接关闭菜单，不触发加载动画
     if (pathname === '/admin') {
       setIsOpen(false);
       return;
     }
-    startLoading();
     router.push('/admin');
   };
 

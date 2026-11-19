@@ -26,7 +26,6 @@ import {
   saveNavMenuOrder,
 } from '@/lib/nav-settings';
 
-import { useNavigationLoading } from './NavigationLoadingProvider';
 import useDragScroll from './useDragScroll';
 
 interface MobileBottomNavProps {
@@ -39,7 +38,6 @@ interface MobileBottomNavProps {
 const MobileBottomNav = ({ activePath }: MobileBottomNavProps) => {
   const pathname = usePathname();
   const searchParams = useSearchParams();
-  const { startLoading } = useNavigationLoading();
 
   // 当前激活路径：优先使用传入的 activePath，否则使用「路径 + 查询参数」。
   // 必须带上查询参数，否则 /douban?type=xxx 这类导航项永远无法匹配到激活状态。
@@ -253,12 +251,6 @@ const MobileBottomNav = ({ activePath }: MobileBottomNavProps) => {
               <Link
                 href={item.href}
                 className='mobile-bottom-nav__link relative flex flex-col items-center justify-center w-full h-14 gap-1 text-xs'
-                onClick={() => {
-                  // 如果不是当前激活的链接，则触发加载动画
-                  if (!active) {
-                    startLoading();
-                  }
-                }}
               >
                 {/* 拖动把手：触屏没有 hover，常显淡色提示可以长按拖动排序 */}
                 <GripVertical

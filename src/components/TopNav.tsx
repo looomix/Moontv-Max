@@ -35,7 +35,6 @@ import {
   saveNavMenuOrder,
 } from '@/lib/nav-settings';
 
-import { useNavigationLoading } from './NavigationLoadingProvider';
 import NavScrollContainer from './NavScrollContainer';
 import SearchSuggestions from './SearchSuggestions';
 import { useSite } from './SiteProvider';
@@ -51,7 +50,6 @@ const TopNav = ({ activePath }: TopNavProps) => {
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const { siteName } = useSite();
-  const { startLoading } = useNavigationLoading();
   const [active, setActive] = useState(activePath || '/');
   const [searchQuery, setSearchQuery] = useState('');
   const [showSuggestions, setShowSuggestions] = useState(false);
@@ -183,7 +181,6 @@ const TopNav = ({ activePath }: TopNavProps) => {
     const q = searchQuery.trim();
     if (!q) return;
     addSearchHistory(q);
-    if (pathname !== '/search') startLoading();
     const p = new URLSearchParams();
     p.set('q', q);
     if (searchSources.length > 0) p.set('sources', searchSources.join(','));
@@ -201,7 +198,6 @@ const TopNav = ({ activePath }: TopNavProps) => {
     setShowSuggestions(false);
     setShowHistory(false);
     addSearchHistory(s);
-    if (pathname !== '/search') startLoading();
     const p = new URLSearchParams();
     p.set('q', s);
     if (searchSources.length > 0) p.set('sources', searchSources.join(','));
@@ -220,7 +216,6 @@ const TopNav = ({ activePath }: TopNavProps) => {
     setSearchQuery(item);
     setShowHistory(false);
     addSearchHistory(item);
-    if (pathname !== '/search') startLoading();
     const p = new URLSearchParams();
     p.set('q', item);
     if (searchSources.length > 0) p.set('sources', searchSources.join(','));
@@ -401,9 +396,6 @@ const TopNav = ({ activePath }: TopNavProps) => {
               <Link
                 href='/'
                 className='flex items-center justify-center select-none hover:opacity-80 transition-opacity duration-200'
-                onClick={() => {
-                  if (active !== '/') startLoading();
-                }}
               >
                 <span className='top-nav__logo font-bold text-green-600 tracking-tight'>
                   {siteName}
@@ -414,9 +406,6 @@ const TopNav = ({ activePath }: TopNavProps) => {
             <Link
               href='/'
               className='flex items-center justify-center select-none hover:opacity-80 transition-opacity duration-200 flex-shrink-0'
-              onClick={() => {
-                if (active !== '/') startLoading();
-              }}
             >
               <span className='top-nav__logo font-bold text-green-600 tracking-tight'>
                 {siteName}
@@ -452,7 +441,6 @@ const TopNav = ({ activePath }: TopNavProps) => {
                       href={item.href}
                       data-nav-key={item.href}
                       onClick={() => {
-                        if (!isActive) startLoading();
                         setActive(item.href);
                       }}
                       data-active={isActive}

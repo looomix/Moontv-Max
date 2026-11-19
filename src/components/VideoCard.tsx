@@ -35,7 +35,6 @@ import { processImageUrl } from '@/lib/utils';
 import FollowingIcon from '@/components/FollowingIcon';
 import { ImagePlaceholder } from '@/components/ImagePlaceholder';
 import MobileActionSheet from '@/components/MobileActionSheet';
-import { useNavigationLoading } from '@/components/NavigationLoadingProvider';
 
 interface VideoCardProps {
   id?: string;
@@ -80,7 +79,6 @@ export default function VideoCard({
   isBangumi = false,
 }: VideoCardProps) {
   const router = useRouter();
-  const { startLoading } = useNavigationLoading();
   const [favorited, setFavorited] = useState(false);
   const [following, setFollowing] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
@@ -395,9 +393,8 @@ export default function VideoCard({
 
   const handleClick = useCallback(() => {
     if (!playbackUrl) return;
-    startLoading();
     router.push(playbackUrl);
-  }, [playbackUrl, router, startLoading]);
+  }, [playbackUrl, router]);
 
   const config = useMemo(() => {
     const configs = {
