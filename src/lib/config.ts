@@ -522,43 +522,22 @@ export async function getConfig(): Promise<AdminConfig> {
       fileConfig = {} as ConfigFileStruct;
     }
 
-    // 合并文件中的源信息
-    const apiSiteEntries = Object.entries(fileConfig.api_site || []);
-    const sourceConfigMap = new Map(
-      (adminConfig.SourceConfig || []).map((s) => [s.key, s])
-    );
-
-    apiSiteEntries.forEach(([key, site]) => {
-      const existingSource = sourceConfigMap.get(key);
-      if (existingSource) {
-        // 如果已存在，只覆盖 name、api、detail 和 from
-        existingSource.name = site.name;
-        existingSource.api = site.api;
-        existingSource.detail = site.detail;
-        existingSource.from = 'config';
-      } else {
-        // 如果不存在，创建新条目
-        sourceConfigMap.set(key, {
+    // 视频源以数据库中的 SourceConfig 为唯一事实来源：
+    // 仅在历史数据缺失该字段时用配置文件做一次性初始化。
+    // 不能每次请求都合并 api_site，否则已被删除的源会被重新加回来
+    // （Upstash / Redis / D1 部署下表现为“无法删除视频源”）。
+    if (!Array.isArray(adminConfig.SourceConfig)) {
+      adminConfig.SourceConfig = Object.entries(fileConfig.api_site || {}).map(
+        ([key, site]) => ({
           key,
           name: site.name,
           api: site.api,
           detail: site.detail,
-          from: 'config',
+          from: 'custom' as const,
           disabled: false,
-        });
-      }
-    });
-
-    // 检查现有源是否在 fileConfig.api_site 中，如果不在则标记为 custom
-    const apiSiteKeys = new Set(apiSiteEntries.map(([key]) => key));
-    sourceConfigMap.forEach((source) => {
-      if (!apiSiteKeys.has(source.key)) {
-        source.from = 'custom';
-      }
-    });
-
-    // 将 Map 转换回数组
-    adminConfig.SourceConfig = Array.from(sourceConfigMap.values());
+        })
+      );
+    }
 
     // 覆盖 CustomCategories - 只覆盖 from 为 config 的项
     const customCategories = fileConfig.custom_category || [];

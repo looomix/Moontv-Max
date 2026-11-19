@@ -2,6 +2,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 
+import { AdminConfig } from '@/lib/admin.types';
 import { getAuthInfoFromCookie } from '@/lib/auth';
 import { getConfig } from '@/lib/config';
 import { getStorage } from '@/lib/db';
@@ -180,6 +181,20 @@ async function probeSource(api: string, timeoutMs = 5000): Promise<boolean> {
   }
 }
 
+/** 从配置文件中同步移除某个源，避免下次初始化时又被合并回来 */
+function dropFromConfigFile(adminConfig: AdminConfig, key: string) {
+  try {
+    const fileConfig = JSON.parse(adminConfig.ConfigFile || '{}');
+    const sites = fileConfig?.api_site;
+    if (sites && Object.prototype.hasOwnProperty.call(sites, key)) {
+      delete sites[key];
+      adminConfig.ConfigFile = JSON.stringify(fileConfig);
+    }
+  } catch {
+    // 配置文件解析失败时忽略，不影响源删除
+  }
+}
+
 export async function POST(request: NextRequest) {
   const storageType = process.env.NEXT_PUBLIC_STORAGE_TYPE || 'localstorage';
   if (storageType === 'localstorage') {
@@ -283,11 +298,8 @@ export async function POST(request: NextRequest) {
         const idx = adminConfig.SourceConfig.findIndex((s) => s.key === key);
         if (idx === -1)
           return NextResponse.json({ error: '源不存在' }, { status: 404 });
-        const entry = adminConfig.SourceConfig[idx];
-        if (entry.from === 'config') {
-          return NextResponse.json({ error: '该源不可删除' }, { status: 400 });
-        }
         adminConfig.SourceConfig.splice(idx, 1);
+        dropFromConfigFile(adminConfig, key);
         break;
       }
       case 'sort': {
@@ -317,10 +329,7 @@ export async function POST(request: NextRequest) {
       case 'batchDisable': {
         const { keys } = body as { keys?: string[] };
         if (!Array.isArray(keys) || keys.length === 0) {
-          return NextResponse.json(
-            { error: '缺少 keys 参数或列表为空' },
-            { status: 400 }
-          );
+          return NextResponse.json({ ok: true, affected: 0 });
         }
         keys.forEach((key) => {
           const entry = adminConfig.SourceConfig.find((s) => s.key === key);
@@ -333,10 +342,7 @@ export async function POST(request: NextRequest) {
       case 'batchEnable': {
         const { keys } = body as { keys?: string[] };
         if (!Array.isArray(keys) || keys.length === 0) {
-          return NextResponse.json(
-            { error: '缺少 keys 参数或列表为空' },
-            { status: 400 }
-          );
+          return NextResponse.json({ ok: true, affected: 0 });
         }
         keys.forEach((key) => {
           const entry = adminConfig.SourceConfig.find((s) => s.key === key);
@@ -349,19 +355,13 @@ export async function POST(request: NextRequest) {
       case 'batchDelete': {
         const { keys } = body as { keys?: string[] };
         if (!Array.isArray(keys) || keys.length === 0) {
-          return NextResponse.json(
-            { error: '缺少 keys 参数或列表为空' },
-            { status: 400 }
-          );
+          return NextResponse.json({ ok: true, deleted: 0 });
         }
-        // 只删除自定义源，系统默认源不可删除
         keys.forEach((key) => {
           const idx = adminConfig.SourceConfig.findIndex((s) => s.key === key);
           if (idx !== -1) {
-            const entry = adminConfig.SourceConfig[idx];
-            if (entry.from !== 'config') {
-              adminConfig.SourceConfig.splice(idx, 1);
-            }
+            adminConfig.SourceConfig.splice(idx, 1);
+            dropFromConfigFile(adminConfig, key);
           }
         });
         break;
@@ -465,10 +465,7 @@ export async function POST(request: NextRequest) {
       case 'check': {
         const { keys } = body as { keys?: string[] };
         if (!Array.isArray(keys) || keys.length === 0) {
-          return NextResponse.json(
-            { error: '缺少 keys 参数或列表为空' },
-            { status: 400 }
-          );
+          return NextResponse.json({ ok: true, results: [] });
         }
         const targets = adminConfig.SourceConfig.filter((s) =>
           keys.includes(s.key)

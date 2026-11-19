@@ -3,25 +3,24 @@ import he from 'he';
 import Hls from 'hls.js';
 
 function getDoubanImageProxyConfig(): {
-  proxyType:
-    | 'direct'
-    | 'server'
-    | 'img3'
-    | 'cmliussss-cdn-tencent'
-    | 'cmliussss-cdn-ali'
-    | 'custom';
+  proxyType: 'cmliussss-cdn-tencent' | 'cmliussss-cdn-ali';
   proxyUrl: string;
 } {
-  const doubanImageProxyType =
+  const savedProxyType =
     localStorage.getItem('doubanImageProxyType') ||
     (window as any).RUNTIME_CONFIG?.DOUBAN_IMAGE_PROXY_TYPE ||
-    'direct';
+    '';
+  // 仅保留 CMLiussss CDN，默认使用腾讯云节点
+  const proxyType: 'cmliussss-cdn-tencent' | 'cmliussss-cdn-ali' =
+    savedProxyType === 'cmliussss-cdn-ali'
+      ? 'cmliussss-cdn-ali'
+      : 'cmliussss-cdn-tencent';
   const doubanImageProxy =
     localStorage.getItem('doubanImageProxyUrl') ||
     (window as any).RUNTIME_CONFIG?.DOUBAN_IMAGE_PROXY ||
     '';
   return {
-    proxyType: doubanImageProxyType,
+    proxyType,
     proxyUrl: doubanImageProxy,
   };
 }
@@ -54,28 +53,13 @@ export function processImageUrl(originalUrl: string): string {
     return normalizedUrl;
   }
 
-  const { proxyType, proxyUrl } = getDoubanImageProxyConfig();
-  switch (proxyType) {
-    case 'server':
-      return `/api/image-proxy?url=${encodeURIComponent(normalizedUrl)}`;
-    case 'img3':
-      return normalizedUrl.replace(/img\d+\.doubanio\.com/g, 'img3.doubanio.com');
-    case 'cmliussss-cdn-tencent':
-      return normalizedUrl.replace(
-        /img\d+\.doubanio\.com/g,
-        'img.doubanio.cmliussss.net'
-      );
-    case 'cmliussss-cdn-ali':
-      return normalizedUrl.replace(
-        /img\d+\.doubanio\.com/g,
-        'img.doubanio.cmliussss.com'
-      );
-    case 'custom':
-      return `${proxyUrl}${encodeURIComponent(normalizedUrl)}`;
-    case 'direct':
-    default:
-      return normalizedUrl;
-  }
+  const { proxyType } = getDoubanImageProxyConfig();
+  return normalizedUrl.replace(
+    /img\d+\.doubanio\.com/g,
+    proxyType === 'cmliussss-cdn-ali'
+      ? 'img.doubanio.cmliussss.com'
+      : 'img.doubanio.cmliussss.net'
+  );
 }
 
 /**

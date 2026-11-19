@@ -1287,22 +1287,15 @@ const VideoSourceConfig = ({
   };
 
   const handleBatchDelete = async () => {
-    if (selectedSources.size === 0) return;
-    
-    // 检查是否有不可删除的源
-    const deletableSources = sources.filter(s => 
-      selectedSources.has(s.key) && s.from !== 'config'
-    );
-    const nonDeletableCount = selectedSources.size - deletableSources.length;
-    
-    let confirmText = `确定要删除选中的 ${deletableSources.length} 个自定义视频源吗？`;
-    if (nonDeletableCount > 0) {
-      confirmText += `\n注意：有 ${nonDeletableCount} 个系统默认源无法删除，将被跳过。`;
+    if (selectedSources.size === 0) {
+      showError('请先选择要删除的视频源');
+      return;
     }
-    
+
+    const keys = Array.from(selectedSources);
     const { isConfirmed } = await Swal.fire({
       title: '确认批量删除',
-      text: confirmText,
+      text: `确定要删除选中的 ${keys.length} 个视频源吗？`,
       icon: 'warning',
       showCancelButton: true,
       confirmButtonText: '确认删除',
@@ -1313,10 +1306,7 @@ const VideoSourceConfig = ({
     if (!isConfirmed) return;
 
     try {
-      await callSourceApi({ 
-        action: 'batchDelete', 
-        keys: deletableSources.map(s => s.key) 
-      });
+      await callSourceApi({ action: 'batchDelete', keys });
       setSelectedSources(new Set());
     } catch (err) {
       console.error('批量删除失败', err);
@@ -1395,32 +1385,19 @@ const VideoSourceConfig = ({
         return;
       }
 
-      const deadSources = sources.filter((s) => dead.includes(s.key));
-      const deletable = deadSources.filter((s) => s.from !== 'config');
-      const disableOnly = deadSources.filter((s) => s.from === 'config');
       const { isConfirmed } = await Swal.fire({
         icon: 'warning',
         title: '发现无用源',
-        html: `共检测到 <b>${dead.length}</b> 个无用源：<br/>可删除的自定义源 <b>${deletable.length}</b> 个；系统源 <b>${disableOnly.length}</b> 个（将改为禁用）。<br/><br/>是否立即清理这些无用源？`,
+        html: `共检测到 <b>${dead.length}</b> 个无用源。<br/><br/>是否立即删除这些无用源？`,
         showCancelButton: true,
-        confirmButtonText: '清理无用源',
+        confirmButtonText: '删除无用源',
         cancelButtonText: '保留',
         confirmButtonColor: '#dc2626',
       });
       if (!isConfirmed) return;
 
-      if (deletable.length > 0) {
-        await callSourceApi({
-          action: 'batchDelete',
-          keys: deletable.map((s) => s.key),
-        });
-      }
-      if (disableOnly.length > 0) {
-        await callSourceApi({
-          action: 'batchDisable',
-          keys: disableOnly.map((s) => s.key),
-        });
-      }
+      await callSourceApi({ action: 'batchDelete', keys: dead });
+      setSelectedSources(new Set());
       Swal.fire({
         icon: 'success',
         title: '清理完成',
@@ -1508,14 +1485,12 @@ const VideoSourceConfig = ({
           >
             {!source.disabled ? '禁用' : '启用'}
           </button>
-          {source.from !== 'config' && (
-            <button
-              onClick={() => handleDelete(source.key)}
-              className='inline-flex items-center px-3 py-1.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800 hover:bg-gray-200 dark:bg-gray-700/40 dark:hover:bg-gray-700/60 dark:text-gray-200 transition-colors'
-            >
-              删除
-            </button>
-          )}
+          <button
+            onClick={() => handleDelete(source.key)}
+            className='inline-flex items-center px-3 py-1.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800 hover:bg-gray-200 dark:bg-gray-700/40 dark:hover:bg-gray-700/60 dark:text-gray-200 transition-colors'
+          >
+            删除
+          </button>
         </td>
       </tr>
     );

@@ -97,10 +97,15 @@ function getDoubanProxyConfig(): {
     | 'custom';
   proxyUrl: string;
 } {
-  const doubanProxyType =
+  const savedProxyType =
     localStorage.getItem('doubanDataSource') ||
     (window as any).RUNTIME_CONFIG?.DOUBAN_PROXY_TYPE ||
-    'direct';
+    '';
+  // 仅保留 CMLiussss CDN，默认使用腾讯云节点
+  const doubanProxyType =
+    savedProxyType === 'cmliussss-cdn-ali'
+      ? 'cmliussss-cdn-ali'
+      : 'cmliussss-cdn-tencent';
   const doubanProxy =
     localStorage.getItem('doubanProxyUrl') ||
     (window as any).RUNTIME_CONFIG?.DOUBAN_PROXY ||
