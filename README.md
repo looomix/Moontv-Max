@@ -1,6 +1,5 @@
 # Moontv-Max
 
-原项目地址https://github.com/MoonTechLab/LunaTV
 
 <div align="center">
   <img src="public/logo.png" alt="LibreTV Logo" width="120">
@@ -452,9 +451,3 @@ Moontv-Max 支持标准的苹果 CMS V10 API 格式。
 - [Zwei](https://github.com/bestzwei) — 提供获取豆瓣数据的 cors proxy
 - [CMLiussss](https://github.com/cmliu) — 提供豆瓣 CDN 服务
 - 感谢所有提供免费影视接口的站点。
-
----
-
-## ⭐ Star 趋势
-
-[![Star History Chart](https://star-history.dera.page/svg?repos=looomix/Moontv-Max)](https://star-history.dera.page/#looomix/Moontv-Max)
