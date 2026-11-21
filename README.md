@@ -40,11 +40,6 @@
 
 > **本项目不内置、不附带任何视频源、影视资源或受版权保护内容**，代码仓库中不存在任何资源站地址列表。所有播放源均由部署者自行添加（后台「视频源配置」→ 手动填写 API 或粘贴自备订阅链接）。请在你所在地区法律法规允许的范围内使用，并对自行添加的内容负责。
 
-<details>
-  <summary>点击查看项目截图</summary>
-  <img src="public/screenshot1.png" alt="项目截图" style="max-width:600px">
-</details>
-
 ## 🗺 目录
 
 - [Moontv-Max](#moontv-max)
